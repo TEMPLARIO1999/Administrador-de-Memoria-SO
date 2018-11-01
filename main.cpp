@@ -6,6 +6,8 @@ using namespace std;
 string stats[3] = {"En espera\0", "Activo\0", "Detenido\0"};
 int PC=0;
 
+//JAJAJAJAJ, ESTOY COMENTANDO EL CÓDIGO.
+
 class Process{
 	public:
 	int memoria;
