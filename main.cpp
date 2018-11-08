@@ -3,14 +3,8 @@ using namespace std;
 #include <time.h>      //Libreria inicial para el tiempo
 #include <stdlib.h>
 //#include <SDL/SDL.h>   //Libreria grafica
-#ifdef _OPENMP         //Libreria para utilizar procesamiento paralelo
- #include <omp.h>
- #define TRUE 1
- #define FALSE 0
-#else
- #define omp_get_thread_num() 0
- #define omp_get_num_threads() 1
-#endif
+#include <pthread.h>
+#include <windows.h>
 
 string stats[3] = {"En espera\0", "Activo\0", "Detenido\0"};  //Estados posibles de procesos
 int PC=0;                //Contador de procesos
@@ -117,10 +111,27 @@ class ListProc {                       //Clase lista doblemente ligada
 		void to_show(){
 			Process *temp = raiz;
 			while ( temp != NULL ){
-				cout << temp->PID <<" : "<< temp->memoria <<endl;
+				cout << temp->PID <<" : "<< temp->memoria << " tiempo : " << temp->tiempo << " seg "<<endl;
 				temp = temp->sig ;
 			}
 			cout << "null" << endl;
+			return;
+		}
+		void rest_sec(){
+			Process *temp = raiz;
+			while ( temp != NULL ){
+				(temp->tiempo)--;
+				temp = temp->sig ;
+			}	
+			return;
+		}
+		void quit_proc(){
+			Process *temp = raiz, *ant=NULL;
+			while ( temp != NULL ){
+				ant = temp;
+				temp = temp->sig ;
+				if(ant->tiempo <= 0) this->pop(ant->memoria);
+			}	
 			return;
 		}
 		int pop(int val) {
@@ -166,8 +177,12 @@ Process *New_Process(){                 //Funcion que crea un nuevo proceso de m
 	return New_proc;
 }
 
-int main(){
-	Process *ejec=new Process(MemMax,0,0,0);  //Proceso inicial con full memoria(raiz)
+void *ManageProcess(void *threadid) {
+    long tid;
+    tid = (long)threadid;
+    
+    
+    Process *ejec=new Process(MemMax,0,0,0);  //Proceso inicial con full memoria(raiz)
 	ListProc proc_ejec(ejec);                 //Objeto con ejec como raiz
 	Process *Esp=NULL,*New_proc;              //Proceso inicial a NULL(raiz)
 	ListProcE proc_esp(Esp);                  //Objeto con esp como raiz
@@ -181,7 +196,10 @@ int main(){
 	do{
 		New_proc=proc_esp.Pop();  //Obtiene un proceso en espera
 		while(!proc_ejec.Primer_Ajuste(New_proc)){
-			
+			Sleep(5000);
+			proc_ejec.rest_sec();
+			proc_ejec.quit_proc();
+			proc_ejec.to_show();
 		}
 		cout<<i++;
 		New_proc=New_Process();
@@ -195,6 +213,29 @@ int main(){
 	cout<<endl;
 	proc_esp.to_show();
 	proc_ejec.to_show();
+	
+	
+    pthread_exit(NULL);
+}
+
+void *ManageTime(void *threadid) {
+    long tid;
+    tid = (long)threadid;
+	
+	while(1){
+		cout << "Mientras la otra funcion maneja los procesos, yo puedo manejar las interrupciones.\n\n";
+		Sleep(10200);
+	}
+	
+    pthread_exit(NULL);
+}
+
+int main(){
+	pthread_t manejar_procesos;
+	pthread_create(&manejar_procesos, NULL, ManageProcess, (void *)0);
+	pthread_t manejar_tiempo;
+	pthread_create(&manejar_tiempo, NULL, ManageTime, (void *)1);
+	pthread_exit(NULL);
 	return 0;
 }
 
