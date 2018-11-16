@@ -4,9 +4,11 @@ using namespace std;
 #include <stdlib.h>
 #include <stdio.h>
 #include <SDL/SDL.h>   //Libreria grafica
+#include <SDL/SDL_image.h>   //Libreria de imagenes
+#include <SDL/SDL_ttf.h>   //Libreria de texto
 #include <pthread.h>
-#include <conio.h>
 #include <windows.h>
+#include <conio.h>
 
 string stats[3] = {"Activo\0", "Detenido\0","En espera\0"};  //Estados posibles de procesos
 bool encendido = true;
@@ -250,7 +252,7 @@ class ListProc {                       //Clase lista doblemente ligada
 
 Process *New_Process(){                 //Funcion que crea un nuevo proceso de manera aleatoria                              
 	int memoria,tiempo,status;
-	memoria = (rand()%20)+1; 
+	memoria = (rand()%20)+5; 
 	memoria+=(memoria%2); 
 	tiempo = (rand()%3)+5;
 	status = rand()%2;
@@ -274,23 +276,17 @@ void *ManageProcess(void *threadid) {
 		proc_esp.Push(New_proc);
 	}
 	do{
-		New_proc=proc_esp.PopTop();  //Obtiene un proceso en espera
-		//cout <<"process "<< New_proc->PID <<" : "<< New_proc->memoria << " tiempo : " << New_proc->tiempo << " seg "<<endl;
+		New_proc=proc_esp.PopTop();  
 		while(!(proc_ejec.*administradores[ajuste])(New_proc)){
 			Sleep(2000);
-		//	system("cls");
 			proc_ejec.rest_sec();
 			proc_ejec.quit_proc();
 			proc_ejec.PageMem();
-		//	proc_ejec.to_show();
-		//	cout <<"process "<< New_proc->PID <<" : "<< New_proc->memoria << " tiempo : " << New_proc->tiempo << " seg "<<endl;
 		}
 		Sleep(2000);
-		//system("cls");
 		proc_ejec.rest_sec();
 		proc_ejec.quit_proc();
 		proc_ejec.PageMem();
-		//proc_ejec.to_show();
 		if(encendido) New_proc=New_Process();
 		else New_proc=new Process(1,0,0,0);
 		proc_esp.Push(New_proc);
@@ -298,88 +294,139 @@ void *ManageProcess(void *threadid) {
     pthread_exit(NULL);
 }
 
+const int SCREEN_WIDTH = 1280;
+const int SCREEN_HEIGHT = 720;
+const int SCREEN_BPP = 32;
+SDL_Surface *background = NULL;
+SDL_Surface *ma = NULL;
+SDL_Surface *pa = NULL;
+SDL_Surface *pea = NULL;
+SDL_Surface *w_b = NULL;
+SDL_Surface *r_b = NULL;
+SDL_Surface *message = NULL;
+SDL_Surface *screen = NULL;
+SDL_Event event;
+TTF_Font *font = NULL;
+SDL_Color white = {255, 255, 255};
+SDL_Color red = {255, 0, 0};
+
+SDL_Surface *load_image( std::string filename ) {
+	SDL_Surface* loadedImage = NULL;
+	SDL_Surface* optimizedImage = NULL;
+	loadedImage = IMG_Load( filename.c_str() );
+	if( loadedImage != NULL ) {
+		optimizedImage = SDL_DisplayFormat( loadedImage );
+		SDL_FreeSurface( loadedImage );
+		if( optimizedImage != NULL ) {
+			SDL_SetColorKey( optimizedImage, SDL_SRCCOLORKEY, SDL_MapRGB( optimizedImage->format, 0, 0xFF, 0xFF ) );
+		}
+	}
+	return optimizedImage;
+}
+
+void apply_surface( int x, int y, SDL_Surface* source, SDL_Surface* destination, SDL_Rect* clip = NULL ) {
+	SDL_Rect offset;
+	offset.x = x;
+	offset.y = y;
+	SDL_BlitSurface( source, clip, destination, &offset );
+}
+
+bool init() {
+	if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 ) return false;
+	screen = SDL_SetVideoMode( SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP, SDL_SWSURFACE );
+	if( screen == NULL ) return false;
+	if( TTF_Init() == -1 ) return false;
+	SDL_WM_SetCaption( "Administrador de memoria SO", NULL );
+	return true;
+}
+
+bool load_files() {
+	background = ma = load_image( "imagenes/fondos/ma.bmp" );
+    pa = load_image( "imagenes/fondos/pa.bmp" );
+    pea = load_image( "imagenes/fondos/pea.bmp" );
+    w_b = load_image( "mem_bar/w_b.bmp" );
+    r_b = load_image( "mem_bar/r_b.bmp" );
+	font = TTF_OpenFont( "openS.ttf", 15);
+	if( !background or !pa or !pea or !ma) return false;
+	if( !font ) return false;
+	return true;
+}
+
+void clean_up() {
+   SDL_FreeSurface( background );
+   SDL_FreeSurface( message );
+   TTF_CloseFont( font );
+   TTF_Quit();
+   SDL_Quit();
+}
+
+void imprimir_rectangulo (SDL_Surface *screen, int x, int y, SDL_Color color, int prof) {
+	SDL_Rect rect = {x, y, 100, prof*6};
+	Uint32 a = SDL_MapRGB(screen->format, color.r, color.g, color.b);
+	SDL_FillRect(screen, &rect, a);
+	SDL_UpdateRect(screen, rect.x, rect.y, rect.w, rect.h);
+	a = SDL_MapRGB(screen->format, 0, 0, 1);
+	rect = {x+1, y+1, 100, 1};
+	SDL_FillRect(screen, &rect, a);
+	SDL_UpdateRect(screen, rect.x, rect.y, rect.w, rect.h);
+}
+
+void apply(){
+	int x=1100, y=60, pos;
+	Process *tempEjec = proc_ejec.GetRaiz();
+	apply_surface( 0, 0, background, screen);
+	while (tempEjec!=NULL){
+		if(tempEjec->PID != 0) imprimir_rectangulo(screen, x, y, red, tempEjec->memoria);
+		else imprimir_rectangulo(screen, x, y, white, tempEjec->memoria);
+		y+=(6*tempEjec->memoria+1);
+		tempEjec=tempEjec->sig;
+	}
+	apply_surface( 0, 500, message, screen );
+	SDL_Flip(screen);
+	Sleep(500);
+}
+
 void *ManagePrint(void *threadid){
 	long *tid;
 	tid = (long*)threadid;
-	
-	int pos_x=1100;
-	int pos_y;
-	int tam_h_px=6;
-	int tam_w_px=150;
-	int aux_tam;
-	Process *tempEjec;
-	
-	SDL_Event event;
-	SDL_Surface *screen;
-	SDL_Surface *fondo = SDL_LoadBMP("task.bmp");
-	screen = SDL_SetVideoMode(1280, 720, 32, SDL_SWSURFACE);
-	SDL_BlitSurface(fondo, NULL, screen, NULL);
-	SDL_WM_SetCaption("Administrador de memoria", NULL);
-//	RECTANGULOS :v
-	SDL_Rect rect;
-	Uint32 a;
-	while(SDL_WaitEvent(&event)){
-		tempEjec = proc_ejec.GetRaiz();
-		aux_tam = (tam_h_px*tempEjec->memoria/2);
-		pos_y=60;
-		while (tempEjec!=NULL){
-			rect = {pos_x, pos_y, tam_w_px, aux_tam};
-			if(tempEjec->PID!=0) a = SDL_MapRGB(screen->format, 255, 0, 0);
-			else a = SDL_MapRGB(screen->format, 255, 255, 255);
-			SDL_FillRect(screen, &rect, a);
-			SDL_UpdateRect(screen, rect.x, rect.y, rect.w, rect.h);
-			
-			rect = {pos_x, pos_y+1, tam_w_px, 1};
-			a = SDL_MapRGB(screen->format, 0, 0, 255);
-			SDL_FillRect(screen, &rect, a);
-			SDL_UpdateRect(screen, rect.x, rect.y, rect.w, rect.h);
-			
-			pos_y+=(tam_h_px*tempEjec->memoria);
-			tempEjec=tempEjec->sig;
-		}
-		SDL_Delay(2000);
+	bool quit = false;
+	if( init() == false ) {
+		SDL_Quit();
 	}
-	SDL_Quit();
-	
-	
-//	while(1){
-//		Process *tempEsp = proc_esp.GetRaiz();
-//		Process *tempEjec = proc_ejec.GetRaiz();
-//		if(New_proc->PID!=0) cout <<" NEXT PROCESS "<<" PID "<< New_proc->PID <<" MEMORIA "<< New_proc->memoria <<" TIEMPO "<<New_proc->tiempo<<" SEG "<<endl<<endl;
-//		cout<<" PROCESOS EN ESPERA           \t\t           PROCESOS EN EJECUCION"<<endl<<endl;
-//		while ( tempEsp != NULL && tempEjec!=NULL){
-//			if(tempEsp->PID!=0 && tempEsp!=NULL) cout <<" PID "<< tempEsp->PID <<" MEMORIA "<< tempEsp->memoria <<" TIEMPO "<<tempEsp->tiempo<<" SEG ";
-//			cout<<"\t\t";
-//			if(tempEjec->PID!=0){
-//				if(tempEjec!=NULL) cout <<" PID "<< tempEjec->PID <<" MEMORIA "<< tempEjec->memoria <<" TIEMPO "<<tempEjec->tiempo<<" SEG ";
-//			}else{
-//				if(tempEjec!=NULL) cout<<" ---------------- "<<tempEjec->memoria<<" ---------------- ";
-//			}
-//			cout<<"\t\t"<<endl;
-//			tempEsp=tempEsp->sig;
-//			tempEjec=tempEjec->sig;
-//		}
-//		cout<<endl<<endl;
-//		cout<<"    D = PARAR/REANUDAR PROCESO    E = ELIMINAR PROCESO    Q = TERMINAR EJECUCION    "<<endl;
-//	Sleep(2000);
-//	system("cls");
-//	}
+	if( load_files() == false ) {
+		SDL_Quit();
+	}
+	message = TTF_RenderText_Solid( font, "Proyecto KK", white );
+	if( message == NULL ) {
+		SDL_Quit();
+	}
+	while(SDL_PollEvent(&event) >= 0){
+    	apply();
+	}
 	pthread_exit(NULL);
 }
 
 void *ManageInterruptions(void *threadid) {
     long *tid;
     tid = (long*)threadid;
-    SDL_Event event;
-    while(SDL_WaitEvent(&event)){
-		if( event.type == SDL_KEYDOWN ){
-			switch( event.key.keysym.sym ) {
-                case SDLK_F1: ajuste=0; break;
-                case SDLK_F2: ajuste=1; break;
-                case SDLK_F3: ajuste=2; break;
-            }
-        }
-    }
+    while(1){
+    	SDL_Event event;
+    	while(SDL_PollEvent(&event)){
+			if( event.type == SDL_KEYDOWN ){
+				switch( event.key.keysym.sym ) {
+	                case SDLK_F1: {
+	                	ajuste=0; background=ma; break;
+	                }
+	                case SDLK_F2: {
+	                	ajuste=1; background=pa; break;
+	                }
+	                case SDLK_F3: {
+	                	ajuste=2; background=pea; break;
+	                }
+	            }
+	        }
+	    }
+	}
     pthread_exit(NULL);
 }
 
