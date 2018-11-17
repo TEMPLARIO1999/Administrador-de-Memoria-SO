@@ -13,9 +13,10 @@ using namespace std;
 string stats[3] = {"Activo\0", "Detenido\0","En espera\0"};  //Estados posibles de procesos
 bool encendido = true;
 int PC=0;                //Contador de procesos
-const int MemMax=100;    //Memoria en kilobytes
+int MemMax=100;    //Memoria en kilobytes
 int typeOrg = 0;
 int ajuste = 0;
+bool solo_bar = false;
 
 class Process {          //Clase tipo proceso, utilizada para procesos en ejecucion y en espera
 	public:
@@ -166,7 +167,7 @@ class ListProc {                       //Clase lista doblemente ligada
 		}
 		bool Mejor_Ajuste(Process *proc) {
 			Process *temp=raiz;
-			int max=100;
+			int max=MemMax;
 			while(temp) {
 				if(max>=((temp->memoria)-(proc->memoria))) {
 					if(temp->PID==0)
@@ -211,8 +212,8 @@ class ListProc {                       //Clase lista doblemente ligada
 				while(temp!=NULL && temp->PID!=id) temp=temp->sig;
 				if(temp==NULL)return;
 				else if(temp->PID==id) {
-					if(temp->status==0) temp->status=1;
-					else if(temp->status==1) temp->status=0;
+					if(temp->status == 2) temp->status = 0;
+					else temp->status = 2;
 				}
 			}
 		}
@@ -227,14 +228,13 @@ class ListProc {                       //Clase lista doblemente ligada
 
 };
 
-Process *New_Process() {                //Funcion que crea un nuevo proceso de manera aleatoria
-	int memoria,tiempo,status;
+Process *New_Process(int status) {                //Funcion que crea un nuevo proceso de manera aleatoria
+	int memoria,tiempo;
 	memoria = (rand()%20)+5;
 	memoria+=(memoria%2);
 	tiempo = (rand()%10)+5;
-	status = rand()%2;
 	Process *New_proc=new Process(memoria,++PC,status,tiempo);
-	return New_proc;
+	return New_proc; //
 }
 
 Process *ejec=new Process(MemMax,0,0,0);  //Proceso inicial con full memoria(raiz)
@@ -249,7 +249,7 @@ void *ManageProcess(void *threadid) {
 	srand(time(NULL));
 	int num_process=10;                     //No. De procesos de inicio
 	for(int i=0; i<num_process; i++) {             //Carga procesos iniciales
-		New_proc=New_Process();
+		New_proc=New_Process(1);
 		proc_esp.Push(New_proc);
 	}
 	do {
@@ -264,8 +264,8 @@ void *ManageProcess(void *threadid) {
 		proc_ejec.rest_sec();
 		proc_ejec.quit_proc();
 		proc_ejec.PageMem();
-		if(encendido) New_proc=New_Process();
-		else New_proc=new Process(1,0,0,0);
+		if(encendido) New_proc=New_Process(1);
+		else New_proc=new Process(1,0,1,0);
 		proc_esp.Push(New_proc);
 	} while(proc_ejec.GetRaiz()->memoria!=MemMax);
 	pthread_exit(NULL);
@@ -277,16 +277,20 @@ const int SCREEN_BPP = 32;
 SDL_Surface *background = NULL;
 SDL_Surface *ma = NULL;
 SDL_Surface *pa = NULL;
+SDL_Surface *pid = NULL;
+SDL_Surface *new_mem = NULL;
 SDL_Surface *pea = NULL;
 SDL_Surface *message = NULL;
 SDL_Surface *p_esp = NULL;
 SDL_Surface *p_ejec = NULL;
 SDL_Surface *mem_libre = NULL;
 SDL_Surface *screen = NULL;
+SDL_Surface *valor_imp = NULL;
 SDL_Event event;
 TTF_Font *font = NULL;
 SDL_Color white = {255, 255, 255};
 SDL_Color red = {255, 0, 0};
+SDL_Color yellow = {255, 255, 0};
 
 SDL_Surface *load_image( std::string filename ) {
 	SDL_Surface* loadedImage = NULL;
@@ -322,6 +326,8 @@ bool load_files() {
 	background = ma = load_image( "imagenes/fondos/ma.bmp" );
 	pa = load_image( "imagenes/fondos/pa.bmp" );
 	pea = load_image( "imagenes/fondos/pea.bmp" );
+	pid = load_image( "imagenes/fondos/pid.bmp" );
+	new_mem = load_image( "imagenes/fondos/mem.bmp" );
 	font = TTF_OpenFont( "openS.ttf", 15);
 	if( !background or !pa or !pea or !ma) return false;
 	if( !font ) return false;
@@ -337,7 +343,7 @@ void clean_up() {
 }
 
 void imprimir_rectangulo (SDL_Surface *screen, int x, int y, SDL_Color color, int prof) {
-	SDL_Rect rect = {x, y, 100, prof*6};
+	SDL_Rect rect = {x, y, 100, prof*(600/MemMax)};
 	Uint32 a = SDL_MapRGB(screen->format, color.r, color.g, color.b);
 	SDL_FillRect(screen, &rect, a);
 	SDL_UpdateRect(screen, rect.x, rect.y, rect.w, rect.h);
@@ -348,48 +354,59 @@ void imprimir_rectangulo (SDL_Surface *screen, int x, int y, SDL_Color color, in
 }
 
 void apply() {
-	int x=1100, y=60, pos, m_libre=100;
+	int x=1100, y=60, pos, m_libre=MemMax;
 	Process *tempEjec = proc_ejec.GetRaiz();
 	Process *tempEsp = NULL;
 	string new_process, process_espera, process_ejec, memoria_libre;
-	apply_surface( 0, 0, background, screen);
+	if(!solo_bar) apply_surface( 0, 0, background, screen);
 
 	while (tempEjec!=NULL) {
-		if(tempEjec->PID != 0) imprimir_rectangulo(screen, x, y, red, tempEjec->memoria);
-		else imprimir_rectangulo(screen, x, y, white, tempEjec->memoria);
-		y+=(6*tempEjec->memoria+1);
+		if(tempEjec->PID != 0) {
+			if(!tempEjec->status) imprimir_rectangulo(screen, x, y, red, tempEjec->memoria);
+			else if (tempEjec->status == 2) imprimir_rectangulo(screen, x, y, yellow, tempEjec->memoria);
+		} else imprimir_rectangulo(screen, x, y, white, tempEjec->memoria);
+		y+=((600/MemMax)*tempEjec->memoria+1);
 		tempEjec=tempEjec->sig;
 	}
-	tempEsp = proc_esp.GetRaiz();
-	tempEjec = proc_ejec.GetRaiz();
-	if(New_proc->PID!=0){
-		new_process =  "Próximo Proceso: PID "+to_string(New_proc->PID)+" MEMORIA "+ to_string(New_proc->memoria) + "KB TIEMPO " + to_string(New_proc->tiempo)+" SEG ";
-		message = TTF_RenderText_Solid( font, new_process.c_str(), white );
-	}
-	
-	int pos_x_m1 = 50, pos_x_m2 = 570, pos_y_m1 = 120, pos_y_m2 = 120;
-	while ( tempEsp != NULL && tempEjec!=NULL){
-		if(tempEsp->PID!=0 && tempEsp!=NULL){
-			process_espera = " PID "+ to_string(tempEsp->PID) +" MEMORIA "+to_string(tempEsp->memoria)+"KB TIEMPO "+to_string(tempEsp->tiempo)+" SEG ";
-			p_esp = TTF_RenderText_Solid( font, process_espera.c_str(), white );
-			pos_y_m1+=25;
-			apply_surface(pos_x_m1, pos_y_m1, p_esp, screen );
+	if(!solo_bar) {
+		tempEsp = proc_esp.GetRaiz();
+		tempEjec = proc_ejec.GetRaiz();
+		if(New_proc->PID!=0) {
+			new_process =  "Próximo Proceso: PID "+to_string(New_proc->PID)+" MEMORIA "+ to_string(New_proc->memoria) + "KB TIEMPO " + to_string(New_proc->tiempo)+" SEG ";
+			message = TTF_RenderText_Solid( font, new_process.c_str(), white );
 		}
-		if(tempEjec->PID!=0)
-			if(tempEjec!=NULL){
-				process_ejec = " PID "+ to_string(tempEjec->PID) +" MEMORIA "+to_string(tempEjec->memoria)+"KB TIEMPO "+to_string(tempEjec->tiempo)+" SEG ";
-				p_ejec = TTF_RenderText_Solid( font, process_ejec.c_str(), white );
-				pos_y_m2+=25;
-				apply_surface(pos_x_m2, pos_y_m1, p_ejec, screen );
-				m_libre-=tempEjec->memoria;
+
+		int pos_x_m1 = 50, pos_x_m2 = 570, pos_y_m1 = 120, pos_y_m2 = 120;
+		while ( tempEsp != NULL && tempEjec!=NULL) {
+			if(tempEsp->PID!=0 && tempEsp!=NULL) {
+				process_espera = " PID "+ to_string(tempEsp->PID) +" MEMORIA "+to_string(tempEsp->memoria)+"KB TIEMPO "+to_string(tempEsp->tiempo)+" SEG ";
+				p_esp = TTF_RenderText_Solid( font, process_espera.c_str(), white );
+				pos_y_m1+=25;
+				apply_surface(pos_x_m1, pos_y_m1, p_esp, screen );
 			}
-		tempEsp=tempEsp->sig;
-		tempEjec=tempEjec->sig;
+			if(tempEjec->PID!=0)
+				if(tempEjec!=NULL) {
+					process_ejec = " PID "+ to_string(tempEjec->PID) +" MEMORIA "+to_string(tempEjec->memoria)+"KB TIEMPO "+to_string(tempEjec->tiempo)+" SEG ";
+					p_ejec = TTF_RenderText_Solid( font, process_ejec.c_str(), white );
+					pos_y_m2+=25;
+					apply_surface(pos_x_m2, pos_y_m1, p_ejec, screen );
+					m_libre-=tempEjec->memoria;
+				}
+			tempEsp=tempEsp->sig;
+			tempEjec=tempEjec->sig;
+		}
 	}
-	memoria_libre = "Memoria libre: "+to_string(m_libre)+" KB";
+	memoria_libre = "Memoria total: "+to_string(MemMax)+" KB";
 	mem_libre = TTF_RenderText_Solid( font, memoria_libre.c_str(), white );
+	apply_surface(650, 660, mem_libre, screen);
 	apply_surface(600, 30, message, screen );
-	apply_surface(850, 660, mem_libre, screen);
+
+	if(!solo_bar) {
+		memoria_libre = "Memoria libre: "+to_string(m_libre)+" KB";
+		mem_libre = TTF_RenderText_Solid( font, memoria_libre.c_str(), white );
+		apply_surface(850, 660, mem_libre, screen);
+	}
+
 	SDL_Flip(screen);
 	Sleep(1000);
 }
@@ -408,6 +425,96 @@ void *ManagePrint(void *threadid) {
 		apply();
 	}
 	pthread_exit(NULL);
+}
+
+string get_key_int(int event) {
+	switch(event) {
+		case SDLK_0:
+		case SDLK_KP0: {
+			return "0";
+		}
+		case SDLK_1:
+		case SDLK_KP1: {
+			return "1";
+		}
+		case SDLK_2:
+		case SDLK_KP2: {
+			return "2";
+		}
+		case SDLK_3:
+		case SDLK_KP3: {
+			return "3";
+		}
+		case SDLK_4:
+		case SDLK_KP4: {
+			return "4";
+		}
+		case SDLK_5:
+		case SDLK_KP5: {
+			return "5";
+		}
+		case SDLK_6:
+		case SDLK_KP6: {
+			return "6";
+		}
+		case SDLK_7:
+		case SDLK_KP7: {
+			return "7";
+		}
+		case SDLK_8:
+		case SDLK_KP8: {
+			return "8";
+		}
+		case SDLK_9:
+		case SDLK_KP9: {
+			return "9";
+		}
+	}
+	return "";
+}
+
+void GetNumbers(int mod) {
+	string valor;
+	SDL_Event event;
+
+	if(mod==1)
+		apply_surface(48, 560, new_mem, screen);
+	else if(mod==2)
+		apply_surface(48, 560, pid, screen);
+	else
+		apply_surface(48, 560, pid, screen);
+	while(1)
+		while(SDL_PollEvent(&event)) {
+			Sleep(200);
+			if( event.type == SDL_KEYDOWN ) {
+				if(event.key.keysym.sym == SDLK_RETURN) {
+					solo_bar = !solo_bar;
+					if(mod==1)
+						MemMax = atoi(valor.c_str());
+					else if(mod==2)
+						proc_ejec.ElimProc(atoi(valor.c_str()));
+					else
+						proc_ejec.DetenProc(atoi(valor.c_str()));
+					return;
+				} else if (event.key.keysym.sym == SDLK_BACKSPACE) {
+					if(mod==1)
+						apply_surface(48, 560, new_mem, screen);
+					else if(mod==2)
+						apply_surface(48, 560, pid, screen);
+					else
+						apply_surface(48, 560, pid, screen);
+					if(!valor.empty()) valor.erase(valor.end()-1);
+					valor_imp = TTF_RenderText_Solid( font, valor.c_str(), white );
+					apply_surface(230, 615, valor_imp, screen );
+					SDL_Flip(screen);
+				} else {
+					valor = valor + get_key_int(event.key.keysym.sym);
+					valor_imp = TTF_RenderText_Solid( font, valor.c_str(), white );
+					apply_surface(230, 615, valor_imp, screen );
+					SDL_Flip(screen);
+				}
+			}
+		}
 }
 
 void *ManageInterruptions(void *threadid) {
@@ -434,6 +541,24 @@ void *ManageInterruptions(void *threadid) {
 						ajuste=2;
 						background=pea;
 						apply();
+						break;
+					}
+					case SDLK_c: {
+						if(solo_bar) break;
+						solo_bar = !solo_bar;
+						GetNumbers(1);
+						break;
+					}
+					case SDLK_k: {
+						if(solo_bar) break;
+						solo_bar = !solo_bar;
+						GetNumbers(2);
+						break;
+					}
+					case SDLK_d: {
+						if(solo_bar) break;
+						solo_bar = !solo_bar;
+						GetNumbers(3);
 						break;
 					}
 				}
