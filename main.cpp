@@ -491,6 +491,8 @@ void GetNumbers(int mod) {
 					solo_bar = !solo_bar;
 					if(mod==1)
 						MemMax = atoi(valor.c_str());
+						//Lo que ingresemos es < MemMax esperamos/matamos hasta que la lista de procesos este libre y cambiamos el valor de la memoria disponible
+							 
 					else if(mod==2)
 						proc_ejec.ElimProc(atoi(valor.c_str()));
 					else
