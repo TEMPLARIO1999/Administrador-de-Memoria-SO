@@ -58,6 +58,10 @@ class ListProc {                       //Clase lista doblemente ligada
 				temp->sig=proc;
 			}
 		}
+		bool Push_blank(Process *proc){
+			proc->sig = raiz;
+			raiz = proc;
+		}
 		Process * PopTop() {
 			Process *temp;
 			temp=raiz;
@@ -267,7 +271,7 @@ void *ManageProcess(void *threadid) {
 		if(encendido) New_proc=New_Process(1);
 		else New_proc=new Process(1,0,1,0);
 		proc_esp.Push(New_proc);
-	} while(proc_ejec.GetRaiz()->memoria!=MemMax);
+	} while(1);
 	pthread_exit(NULL);
 }
 
@@ -476,7 +480,8 @@ string get_key_int(int event) {
 void GetNumbers(int mod) {
 	string valor;
 	SDL_Event event;
-
+	Process *proc;
+	int aux;
 	if(mod==1)
 		apply_surface(48, 560, new_mem, screen);
 	else if(mod==2)
@@ -485,14 +490,25 @@ void GetNumbers(int mod) {
 		apply_surface(48, 560, pid, screen);
 	while(1)
 		while(SDL_PollEvent(&event)) {
-			Sleep(200);
 			if( event.type == SDL_KEYDOWN ) {
 				if(event.key.keysym.sym == SDLK_RETURN) {
 					solo_bar = !solo_bar;
-					if(mod==1)
-						MemMax = atoi(valor.c_str());
-						//Lo que ingresemos es < MemMax esperamos/matamos hasta que la lista de procesos este libre y cambiamos el valor de la memoria disponible
-							 
+					if(mod==1){
+						aux=atoi(valor.c_str());
+						if(MemMax<aux){
+							proc=new Process((aux-MemMax),0,1,0);
+							proc_ejec.Push_blank(proc);
+							MemMax=aux;
+						}else if(MemMax>aux){
+							while(MemMax>aux){
+								proc=proc_ejec.PopTop();
+								MemMax=MemMax-(proc->memoria);	
+							}
+							proc=new Process(aux-MemMax,0,1,0);
+							proc_ejec.Push_blank(proc);
+							MemMax=aux;
+						}
+					}	
 					else if(mod==2)
 						proc_ejec.ElimProc(atoi(valor.c_str()));
 					else
